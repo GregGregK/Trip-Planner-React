@@ -14,31 +14,31 @@ const SAVE_DELAY = 1000
 
 const useTripStore = create((set, get) => ({
   // ─── Estado ───────────────────────────────────────────────────────────────
-  data:          {},
-  links:         [],
-  hotels:        [],
-  tours:         [],
+  data: {},
+  links: [],
+  hotels: [],
+  tours: [],
 
-  currentUser:   null,
+  currentUser: null,
   currentTripId: null,
 
-  isLoading:     false,
-  isSaving:      false,
+  isLoading: false,
+  isSaving: false,
   isInitialized: false,
-  saveStatus:    'idle',
+  saveStatus: 'idle',
 
   // UI state
-  selectedDate:  null,
-  currentTab:    'days',
-  viewYear:      new Date().getFullYear(),
-  viewMonth:     new Date().getMonth(),
+  selectedDate: null,
+  currentTab: 'days',
+  viewYear: new Date().getFullYear(),
+  viewMonth: new Date().getMonth(),
 
   // ─── UI actions ───────────────────────────────────────────────────────────
   setSelectedDate: (date) => set({ selectedDate: date }),
-  setCurrentTab:   (tab)  => set({ currentTab: tab }),
-  setViewYear:     (y)    => set({ viewYear: y }),
-  setViewMonth:    (m)    => set({ viewMonth: m }),
-  setCurrentUser:  (user) => set({ currentUser: user }),
+  setCurrentTab: (tab) => set({ currentTab: tab }),
+  setViewYear: (y) => set({ viewYear: y }),
+  setViewMonth: (m) => set({ viewMonth: m }),
+  setCurrentUser: (user) => set({ currentUser: user }),
 
   // ─── Data mutations ───────────────────────────────────────────────────────
   setDayData: (dateKey, countries) =>
@@ -51,13 +51,13 @@ const useTripStore = create((set, get) => ({
       return { data: next }
     }),
 
-  setLinks:  (links)  => set({ links }),
+  setLinks: (links) => set({ links }),
   setHotels: (hotels) => set({ hotels }),
-  setTours:  (tours)  => set({ tours }),
+  setTours: (tours) => set({ tours }),
 
-  addLink:  (link)  => set(state => ({ links:  [...state.links,  link]  })),
+  addLink: (link) => set(state => ({ links: [...state.links, link] })),
   addHotel: (hotel) => set(state => ({ hotels: [...state.hotels, hotel] })),
-  addTour:  (tour)  => set(state => ({ tours:  [...state.tours,  tour]  })),
+  addTour: (tour) => set(state => ({ tours: [...state.tours, tour] })),
 
   updateLink: (idx, patch) =>
     set(state => {
@@ -80,9 +80,9 @@ const useTripStore = create((set, get) => ({
       return { tours: next }
     }),
 
-  deleteLink:  (idx) => set(state => ({ links:  state.links.filter((_,  i) => i !== idx) })),
+  deleteLink: (idx) => set(state => ({ links: state.links.filter((_, i) => i !== idx) })),
   deleteHotel: (idx) => set(state => ({ hotels: state.hotels.filter((_, i) => i !== idx) })),
-  deleteTour:  (idx) => set(state => ({ tours:  state.tours.filter((_,  i) => i !== idx) })),
+  deleteTour: (idx) => set(state => ({ tours: state.tours.filter((_, i) => i !== idx) })),
 
   updateCountryActivities: (dateKey, countryIdx, activities) =>
     set(state => {
@@ -150,7 +150,22 @@ const useTripStore = create((set, get) => ({
 
   // ─── Carregar viagem do Firestore ─────────────────────────────────────────
   loadUserTrip: async (user) => {
+    // Verificar se já está carregado para evitar loop
+    const state = get()
+    if (state.isInitialized && state.currentUser?.uid === user.uid) {
+      console.log('⏭️ Trip already loaded, skipping...')
+      return
+    }
+
+    console.log('🔄 Loading trip for user:', user?.uid)
     set({ isLoading: true, isInitialized: false })
+
+    // Timeout de segurança para não ficar preso
+    const timeoutId = setTimeout(() => {
+      console.warn('⚠️ Load trip timeout - forcing loading to false')
+      set({ isLoading: false, isInitialized: true })
+    }, 10000) // 10 segundos
+
     try {
       const tripsRef = collection(db, 'users', user.uid, 'trips')
       const q = query(tripsRef, orderBy('createdAt', 'desc'), limit(1))
@@ -159,35 +174,72 @@ const useTripStore = create((set, get) => ({
       if (!snapshot.empty) {
         const tripDoc = snapshot.docs[0]
         const tripData = tripDoc.data()
+        console.log('✅ Trip loaded:', tripDoc.id)
         set({
           currentTripId: tripDoc.id,
-          data:   tripData.days   || {},
-          links:  tripData.links  || [],
+          data: tripData.days || {},
+          links: tripData.links || [],
           hotels: tripData.hotels || [],
-          tours:  tripData.tours  || [],
+          tours: tripData.tours || [],
         })
       } else {
+        console.log('📝 Creating new trip for user')
         const tripsColRef = collection(db, 'users', user.uid, 'trips')
         const newTrip = await addDoc(tripsColRef, {
-          name: 'Minha Viagem', days: {}, links: [], hotels: [], tours: [],
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+          name: 'Minha Viagem',
+          days: {},
+          links: [],
+          hotels: [],
+          tours: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         })
-        set({ currentTripId: newTrip.id, data: {}, links: [], hotels: [], tours: [] })
+        console.log('✅ New trip created:', newTrip.id)
+        set({
+          currentTripId: newTrip.id,
+          data: {},
+          links: [],
+          hotels: [],
+          tours: [],
+        })
       }
 
-      set({ isInitialized: true, saveStatus: 'idle' })
+      // Resetar loading e marcar como inicializado
+      clearTimeout(timeoutId)
+      set({
+        isInitialized: true,
+        isLoading: false,
+        saveStatus: 'idle'
+      })
+
     } catch (error) {
-      console.error('❌ Erro ao carregar viagem:', error)
+      console.error('❌ Error loading trip:', error)
+      clearTimeout(timeoutId)
+
+      // Tentar carregar do localStorage
       try {
         const backup = localStorage.getItem('trip_planner_backup')
         if (backup) {
           const parsed = JSON.parse(backup)
-          set({ data: parsed.days || {}, links: parsed.links || [], hotels: parsed.hotels || [], tours: parsed.tours || [] })
+          console.log('💾 Loaded from backup')
+          set({
+            data: parsed.days || {},
+            links: parsed.links || [],
+            hotels: parsed.hotels || [],
+            tours: parsed.tours || [],
+          })
         }
-      } catch { /* sem backup */ }
-      set({ currentTripId: 'offline', isInitialized: true, saveStatus: 'error' })
-    } finally {
-      set({ isLoading: false })
+      } catch (backupError) {
+        console.warn('No backup available')
+      }
+
+      // SEMPRE resetar loading em caso de erro
+      set({
+        currentTripId: 'offline',
+        isInitialized: true,
+        isLoading: false,
+        saveStatus: 'error'
+      })
     }
   },
 
@@ -207,7 +259,7 @@ const useTripStore = create((set, get) => ({
     data: {}, links: [], hotels: [], tours: [],
     currentUser: null, currentTripId: null,
     isInitialized: false, selectedDate: null,
-    saveStatus: 'idle'
+    saveStatus: 'idle', isLoading: false
   }),
 }))
 
