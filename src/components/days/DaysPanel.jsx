@@ -1,8 +1,7 @@
 // src/components/days/DaysPanel.jsx
 import { useState } from 'react'
 import useTripStore from '../../store/useTripStore.js'
-import { dateKey, fmtDate, fmtFullDate, WEEKDAYS, MONTHS, genId, ENTITY_CONFIG, getHotelEventsForDay, getTourEventsForDay } from '../../lib/utils'
-import CountryCard from './CountryCard'
+import { dateKey, fmtDate, fmtFullDate, WEEKDAYS, MONTHS, genId, ENTITY_CONFIG, getHotelEventsForDay } from '../../lib/utils'import CountryCard from './CountryCard'
 import ConfirmModal from '../ui/ConfirmModal'
 
 const FLAGS = ['🌍','🌎','🌏','🇧🇷','🇵🇹','🇪🇸','🇫🇷','🇮🇹','🇩🇪','🇬🇧','🇯🇵','🇺🇸','🇦🇷','🇨🇱','🇨🇴','🇲🇽','🇨🇳','🇮🇳','🇦🇺','🇨🇦']
@@ -37,13 +36,21 @@ export default function DaysPanel() {
   const weekday   = WEEKDAYS[new Date(y, m - 1, d).getDay()]
   const countries = data[selectedDate] || []
   const hotelEvents = getHotelEventsForDay(selectedDate, hotels)
-  const dayTours    = getTourEventsForDay(selectedDate, tours)
 
   function addCountry() {
     const next = [...countries, { id: genId(), name: '', flag: '🌍', location: '', lat: null, lng: null, activities: [] }]
     setDayData(selectedDate, next)
     save()
   }
+
+  function moveCountry(ci, dir) {
+  const target = ci + dir
+  if (target < 0 || target >= countries.length) return
+  const next = [...countries]
+  ;[next[ci], next[target]] = [next[target], next[ci]]
+  setDayData(selectedDate, next)
+  save()
+}
 
   function updateCountry(ci, patch) {
     const next = countries.map((c, i) => i === ci ? { ...c, ...patch } : c)
@@ -59,20 +66,11 @@ export default function DaysPanel() {
   }
 
   // Filtro de tipos para o dia
-  const allActs = countries.flatMap(c => c.activities || [])
-  const typeCounts = {}
-  allActs.forEach(a => {
-    const t = a.type || 'tour'
-    typeCounts[t] = (typeCounts[t] || 0) + 1
-  })
-  const customTypes = {}
-  allActs.filter(a => a.type === 'custom').forEach(a => {
-    const label = (a.customType || 'Outro').trim() || 'Outro'
-    customTypes[label] = (customTypes[label] || 0) + 1
-  })
+const allActs = countries.flatMap(c => c.activities || [])
+const counts = { tour: 0, hotel: 0, none: 0 }
+allActs.forEach(a => { const b = a.linkType || 'none'; counts[b] = (counts[b] || 0) + 1 })
 
-  const TYPE_LABELS = { tour: 'Passeio', bus: 'Ônibus', food: 'Refeição', hotel: 'Hotel' }
-
+const LINK_FILTER_LABELS = { tour: 'Passeios', hotel: 'Hotéis', none: 'Sem vínculo' }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
       {/* Header */}
@@ -86,14 +84,6 @@ export default function DaysPanel() {
         </button>
       </div>
 
-      {/* Banners de passeios */}
-      {dayTours.map((t, i) => (
-        <div key={i} className="tour-banner" onClick={() => setCurrentTab('tours')}>
-          <i className="ti ti-map tb-icon" />
-          <span>Passeio: <b>{t.name || 'Sem nome'}</b>{t.time ? ` às ${t.time}` : ''}</span>
-          <span className="tb-arrow">Ver detalhes →</span>
-        </div>
-      ))}
 
       {/* Banners de hotéis */}
       {hotelEvents.map((ev, i) => {
@@ -108,29 +98,19 @@ export default function DaysPanel() {
       })}
 
       {/* Filter bar */}
-      {allActs.length > 0 && (
-        <div className="filter-bar">
-          <span className="filter-bar-label">Filtrar:</span>
-          <button className={`filter-chip${dayTypeFilter === 'all' ? ' active' : ''}`} onClick={() => setDayTypeFilter('all')}>
-            Todos <span className="fc-count">{allActs.length}</span>
-          </button>
-          {Object.entries(TYPE_LABELS).map(([t, label]) => typeCounts[t] ? (
-            <button key={t} className={`filter-chip${dayTypeFilter === t ? ' active' : ''}`} onClick={() => setDayTypeFilter(t)}>
-              {label} <span className="fc-count">{typeCounts[t]}</span>
-            </button>
-          ) : null)}
-          {Object.entries(customTypes).map(([label, count]) => (
-            <button
-              key={label}
-              className={`filter-chip${dayTypeFilter === 'custom::' + label ? ' active' : ''}`}
-              onClick={() => setDayTypeFilter('custom::' + label)}
-            >
-              {label} <span className="fc-count">{count}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
+     {allActs.length > 0 && (
+  <div className="filter-bar">
+    <span className="filter-bar-label">Filtrar:</span>
+    <button className={`filter-chip${dayTypeFilter === 'all' ? ' active' : ''}`} onClick={() => setDayTypeFilter('all')}>
+      Todos <span className="fc-count">{allActs.length}</span>
+    </button>
+    {['tour', 'hotel', 'none'].map(bucket => counts[bucket] ? (
+      <button key={bucket} className={`filter-chip${dayTypeFilter === bucket ? ' active' : ''}`} onClick={() => setDayTypeFilter(bucket)}>
+        {LINK_FILTER_LABELS[bucket]} <span className="fc-count">{counts[bucket]}</span>
+      </button>
+    ) : null)}
+  </div>
+)}
       {/* Empty state */}
       {countries.length === 0 && (
         <div className="empty-state">
@@ -143,17 +123,22 @@ export default function DaysPanel() {
       {/* Country cards */}
       <div id="mainContent" style={{ flex: 1 }}>
         {countries.map((country, ci) => (
-          <CountryCard
-            key={country.id || ci}
-            country={country}
-            ci={ci}
-            selectedDate={selectedDate}
-            dayTypeFilter={dayTypeFilter}
-            flags={FLAGS}
-            onUpdate={(patch) => updateCountry(ci, patch)}
-            onDelete={() => deleteCountry(ci)}
-            onSave={save}
-          />
+        <CountryCard
+          key={country.id || ci}
+          country={country}
+          selectedDate={selectedDate}
+          dayTypeFilter={dayTypeFilter}
+          flags={FLAGS}
+          tours={tours}
+          hotels={hotels}
+          onUpdate={(patch) => updateCountry(ci, patch)}
+          onDelete={() => deleteCountry(ci)}
+          onSave={save}
+          onMoveUp={() => moveCountry(ci, -1)}
+          onMoveDown={() => moveCountry(ci, 1)}
+          isFirst={ci === 0}
+          isLast={ci === countries.length - 1}
+        />
         ))}
       </div>
     </div>
