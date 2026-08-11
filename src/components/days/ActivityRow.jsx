@@ -19,7 +19,12 @@ export default function ActivityRow({ activity, isDimmed, linkedEntity, onOpen, 
         {activity.name || '(sem nome)'}
         {linkedEntity && (
           <span className={`activity-link-badge ${linkedEntity.kind}`}>
-            <i className={`ti ${linkedEntity.kind === 'tour' ? 'ti-map' : 'ti-bed'}`} /> {linkedEntity.name}
+            <i className={`ti ${
+              linkedEntity.kind === 'tour' ? 'ti-map' :
+              linkedEntity.kind === 'hotel' ? 'ti-bed' :
+              linkedEntity.kind === 'arrival' ? 'ti-plane-arrival' :
+              'ti-plane-departure'
+            }`} /> {linkedEntity.name}
           </span>
         )}
       </span>

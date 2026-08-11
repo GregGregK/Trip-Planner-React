@@ -1,7 +1,8 @@
 // src/components/days/DaysPanel.jsx
 import { useState } from 'react'
 import useTripStore from '../../store/useTripStore.js'
-import { dateKey, fmtDate, fmtFullDate, WEEKDAYS, MONTHS, genId, ENTITY_CONFIG, getHotelEventsForDay } from '../../lib/utils'import CountryCard from './CountryCard'
+import { dateKey, fmtDate, fmtFullDate, WEEKDAYS, MONTHS, genId, ENTITY_CONFIG, getHotelEventsForDay } from '../../lib/utils'
+import CountryCard from './CountryCard'
 import ConfirmModal from '../ui/ConfirmModal'
 
 const FLAGS = ['🌍','🌎','🌏','🇧🇷','🇵🇹','🇪🇸','🇫🇷','🇮🇹','🇩🇪','🇬🇧','🇯🇵','🇺🇸','🇦🇷','🇨🇱','🇨🇴','🇲🇽','🇨🇳','🇮🇳','🇦🇺','🇨🇦']
@@ -66,7 +67,7 @@ export default function DaysPanel() {
   }
 
   // Filtro de tipos para o dia
-const allActs = countries.flatMap(c => c.activities || [])
+const allActs = countries.flatMap(c => (c.cities || []).flatMap(city => city.activities || []))
 const counts = { tour: 0, hotel: 0, none: 0 }
 allActs.forEach(a => { const b = a.linkType || 'none'; counts[b] = (counts[b] || 0) + 1 })
 
@@ -145,6 +146,19 @@ const LINK_FILTER_LABELS = { tour: 'Passeios', hotel: 'Hotéis', none: 'Sem vín
   )
 }
 
+function getFlightEvents(countries) {
+  const events = []
+  countries.forEach(c => {
+    (c.cities || []).forEach(city => {
+      (city.activities || []).forEach(a => {
+        if (a.linkType === 'arrival')   events.push({ kind: 'arrival',   time: a.time, flag: c.flag || '🌍' })
+        if (a.linkType === 'departure') events.push({ kind: 'departure', time: a.time, flag: c.flag || '🌍' })
+      })
+    })
+  })
+  return events.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'))
+}
+
 // ── Visão geral de dias ────────────────────────────────────────────────────────
 function DaysGrid({ data, tours, hotels, onSelect }) {
   const allKeys = [
@@ -198,6 +212,7 @@ function DaysGrid({ data, tours, hotels, onSelect }) {
                 const actCount  = countries.reduce((sum, c) => sum + (c.activities || []).length, 0)
                 const tourCount = tours.filter(t => t.linkedDay === key).length
                 const total     = actCount + tourCount
+                const flightEvents = getFlightEvents(countries)
 
                 return (
                   <div key={key} className="day-grid-card" onClick={() => onSelect(key)}>
@@ -210,6 +225,15 @@ function DaysGrid({ data, tours, hotels, onSelect }) {
                         <span className="day-grid-card-badge">{total} item{total > 1 ? 's' : ''}</span>
                       )}
                     </div>
+                    {flightEvents.length > 0 && (
+                    <div className="day-grid-card-flights">
+                      {flightEvents.map((ev, i) => (
+                        <span key={i} className={`day-grid-flight-badge ${ev.kind}`}>
+                          {ev.kind === 'arrival' ? '🛬' : '🛫'} {ev.time || '--:--'} {ev.flag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                     <div className="day-grid-card-content">
                       <div className="day-grid-card-row">
                         <span className="day-grid-card-icon">{flags.slice(0, 4).join(' ')}</span>

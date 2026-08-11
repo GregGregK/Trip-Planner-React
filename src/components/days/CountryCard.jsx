@@ -29,11 +29,10 @@ export default function CountryCard({
   }
 
   function addCity() {
-    const next = [...cities, { id: genId(), name: '', location: '', lat: null, lng: null, activities: [] }]
+    const next = [...cities, { id: genId(), name: '', lat: null, lng: null, activities: [] }]
     onUpdate({ cities: next })
     onSave()
   }
-
   function deleteCity(ci) {
     const next = cities.filter((_, i) => i !== ci)
     onUpdate({ cities: next })
@@ -42,15 +41,15 @@ export default function CountryCard({
   }
 
   async function handleGeo(ci) {
-    const city = cities[ci]
-    const query = city.location || city.name || ''
-    if (!query) { setGeoStatus(s => ({ ...s, [ci]: 'Sem localização' })); return }
-    setGeoStatus(s => ({ ...s, [ci]: 'Buscando…' }))
-    const result = await geocodeLocation(query)
-    if (result.success) updateCity(ci, { lat: result.lat, lng: result.lng })
-    setGeoStatus(s => ({ ...s, [ci]: result.message }))
-    setTimeout(() => setGeoStatus(s => ({ ...s, [ci]: '' })), 2000)
-  }
+  const city = cities[ci]
+  const query = city.name || ''
+  if (!query) { setGeoStatus(s => ({ ...s, [ci]: 'Digite o nome da cidade' })); return }
+  setGeoStatus(s => ({ ...s, [ci]: 'Buscando…' }))
+  const result = await geocodeLocation(query)
+  if (result.success) updateCity(ci, { lat: result.lat, lng: result.lng })
+  setGeoStatus(s => ({ ...s, [ci]: result.message }))
+  setTimeout(() => setGeoStatus(s => ({ ...s, [ci]: '' })), 2000)
+}
 
   function addActivity(ci) {
     const city = cities[ci]
@@ -71,6 +70,8 @@ export default function CountryCard({
   }
 
   function getLinkedEntity(activity) {
+    if (activity.linkType === 'arrival')   return { kind: 'arrival',   name: 'Chegada' }
+    if (activity.linkType === 'departure') return { kind: 'departure', name: 'Saída' }
     if (!activity.linkType || !activity.linkId) return null
     const list = activity.linkType === 'tour' ? tours : hotels
     const found = (list || []).find(x => x.id === activity.linkId)
@@ -136,31 +137,21 @@ export default function CountryCard({
       {cities.map((city, ci) => (
         <div key={city.id || ci} className="city-block">
           <div className="city-header">
-            <i className="ti ti-map-pin-filled" style={{ color: 'var(--muted)', fontSize: 13 }} />
+            <i className="ti ti-map-pin" style={{ color: city.lat ? 'var(--accent)' : 'var(--muted)', fontSize: 13 }} />
             <input
               className="city-name-input"
               value={city.name || ''}
               placeholder="Nome da cidade"
               onChange={e => updateCity(ci, { name: e.target.value })}
             />
+            <button className={`geo-btn${city.lat ? ' pinned' : ''}`} onClick={() => handleGeo(ci)} title="Buscar e fixar pin no mapa">
+              <i className="ti ti-map-pin-2" /> Fixar pin
+            </button>
             <button className="btn-icon" onClick={() => setConfirmCityIdx(ci)}>
               <i className="ti ti-trash" />
             </button>
           </div>
-
-          <div className="city-location-row">
-            <i className="ti ti-map-pin" style={{ color: city.lat ? 'var(--accent)' : 'var(--muted)', fontSize: 13 }} />
-            <input
-              className="location-input"
-              value={city.location || ''}
-              placeholder="Localização para o mapa"
-              onChange={e => updateCity(ci, { location: e.target.value })}
-            />
-            <button className={`geo-btn${city.lat ? ' pinned' : ''}`} onClick={() => handleGeo(ci)}>
-              <i className="ti ti-map-pin-2" /> Fixar pin
-            </button>
-            {geoStatus[ci] && <span className="geo-status">{geoStatus[ci]}</span>}
-          </div>
+          {geoStatus[ci] && <div className="city-geo-status">{geoStatus[ci]}</div>}
 
           <div className="activities">
             {(city.activities || []).map((a, ai) => {

@@ -12,14 +12,20 @@ export default function ActivityModal({ open, activity, tours, hotels, onSave, o
     setName(activity.name || '')
     setTime(activity.time || '')
     setDescription(activity.description || '')
-    setLinkKey(activity.linkType && activity.linkId ? `${activity.linkType}:${activity.linkId}` : '')
+    setLinkKey(
+      activity.linkType === 'arrival' || activity.linkType === 'departure'
+        ? activity.linkType
+        : (activity.linkType && activity.linkId ? `${activity.linkType}:${activity.linkId}` : '')
+    )
   }, [activity, open])
 
   if (!open || !activity) return null
 
   function handleSave() {
     let linkType = null, linkId = null
-    if (linkKey) {
+    if (linkKey === 'arrival' || linkKey === 'departure') {
+      linkType = linkKey
+    } else if (linkKey) {
       const [kind, id] = linkKey.split(':')
       linkType = kind
       linkId = id
@@ -48,8 +54,11 @@ export default function ActivityModal({ open, activity, tours, hotels, onSave, o
 
         <div className="activity-modal-field">
           <label>Vincular a</label>
+
           <select value={linkKey} onChange={e => setLinkKey(e.target.value)}>
             <option value="">Nenhum (item avulso)</option>
+            <option value="arrival">🛬 Chegada no país</option>
+            <option value="departure">🛫 Saída do país</option>
             {tours.length > 0 && (
               <optgroup label="Passeios">
                 {tours.map(t => <option key={`tour:${t.id}`} value={`tour:${t.id}`}>{t.name || 'Passeio sem nome'}</option>)}
