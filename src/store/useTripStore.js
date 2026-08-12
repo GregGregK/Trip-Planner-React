@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { db } from '../lib/firebase'
 import {
   doc, collection,
-  setDoc, updateDoc, addDoc,
+  setDoc, updateDoc, addDoc, getDoc,
   serverTimestamp, orderBy, limit, query,
   getDocs,
 } from 'firebase/firestore'
@@ -21,7 +21,7 @@ const useTripStore = create((set, get) => ({
 
   currentUser: null,
   currentTripId: null,
-
+  tripsList: [], // [{ id, name, updatedAt }]
   isLoading: false,
   isSaving: false,
   isInitialized: false,
@@ -148,9 +148,9 @@ const useTripStore = create((set, get) => ({
     }, SAVE_DELAY)
   },
 
-  // ─── Carregar viagem do Firestore ─────────────────────────────────────────
+  // ─── Carregar viagem do Firestore (a mais recente) ─────────────────────────
   loadUserTrip: async (user) => {
-    // Verificar se já está carregado para evitar loop
+    // Evita recarregar à toa se já está tudo pronto pro mesmo usuário
     const state = get()
     if (state.isInitialized && state.currentUser?.uid === user.uid) {
       console.log('⏭️ Trip already loaded, skipping...')
@@ -212,6 +212,9 @@ const useTripStore = create((set, get) => ({
         saveStatus: 'idle'
       })
 
+      // Popular a lista de viagens pro seletor
+      get().loadTripsList()
+
     } catch (error) {
       console.error('❌ Error loading trip:', error)
       clearTimeout(timeoutId)
@@ -243,6 +246,81 @@ const useTripStore = create((set, get) => ({
     }
   },
 
+  // ─── Listar todas as viagens do usuário ────────────────────────────────────
+  loadTripsList: async () => {
+    const { currentUser } = get()
+    if (!currentUser) return
+    try {
+      const tripsRef = collection(db, 'users', currentUser.uid, 'trips')
+      const q = query(tripsRef, orderBy('updatedAt', 'desc'))
+      const snapshot = await getDocs(q)
+      const list = snapshot.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || 'Viagem sem nome',
+        updatedAt: d.data().updatedAt,
+      }))
+      set({ tripsList: list })
+    } catch (error) {
+      console.error('Erro ao listar viagens:', error)
+    }
+  },
+
+  // ─── Trocar de viagem ───────────────────────────────────────────────────────
+  switchTrip: async (tripId) => {
+    const { currentUser, currentTripId } = get()
+    if (!currentUser || tripId === currentTripId) return
+
+    set({ isLoading: true, isInitialized: false })
+    try {
+      const tripRef = doc(db, 'users', currentUser.uid, 'trips', tripId)
+      const snap = await getDoc(tripRef)
+      if (snap.exists()) {
+        const tripData = snap.data()
+        set({
+          currentTripId: tripId,
+          data:   tripData.days   || {},
+          links:  tripData.links  || [],
+          hotels: tripData.hotels || [],
+          tours:  tripData.tours  || [],
+          selectedDate: null,
+          currentTab: 'days',
+        })
+      }
+      set({ isInitialized: true, saveStatus: 'idle' })
+    } catch (error) {
+      console.error('Erro ao trocar de viagem:', error)
+      set({ saveStatus: 'error' })
+    } finally {
+      set({ isLoading: false })
+    }
+  },
+
+  // ─── Criar nova viagem ────────────────────────────────────────────────────
+  createNewTrip: async (name) => {
+    const { currentUser } = get()
+    if (!currentUser) return
+    set({ isLoading: true })
+    try {
+      const tripsColRef = collection(db, 'users', currentUser.uid, 'trips')
+      const newTrip = await addDoc(tripsColRef, {
+        name: name?.trim() || 'Nova Viagem',
+        days: {}, links: [], hotels: [], tours: [],
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+      set({
+        currentTripId: newTrip.id,
+        data: {}, links: [], hotels: [], tours: [],
+        selectedDate: null, currentTab: 'days',
+        isInitialized: true, saveStatus: 'idle',
+      })
+      await get().loadTripsList()
+    } catch (error) {
+      console.error('Erro ao criar viagem:', error)
+    } finally {
+      set({ isLoading: false })
+    }
+  },
+
   // ─── Criar usuário no Firestore ───────────────────────────────────────────
   createUserDoc: async (uid, name, email) => {
     try {
@@ -257,7 +335,7 @@ const useTripStore = create((set, get) => ({
   // ─── Reset ao fazer logout ────────────────────────────────────────────────
   reset: () => set({
     data: {}, links: [], hotels: [], tours: [],
-    currentUser: null, currentTripId: null,
+    currentUser: null, currentTripId: null, tripsList: [],
     isInitialized: false, selectedDate: null,
     saveStatus: 'idle', isLoading: false
   }),

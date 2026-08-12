@@ -6,15 +6,22 @@ import ConfirmModal from './ConfirmModal'
 
 export default function UserMenu() {
   const { logout } = useAuth()
-  const currentUser = useTripStore(s => s.currentUser)
-  const [open, setOpen]           = useState(false)
+  const currentUser  = useTripStore(s => s.currentUser)
+  const currentTripId = useTripStore(s => s.currentTripId)
+  const tripsList    = useTripStore(s => s.tripsList)
+  const loadTripsList = useTripStore(s => s.loadTripsList)
+  const switchTrip    = useTripStore(s => s.switchTrip)
+  const createNewTrip = useTripStore(s => s.createNewTrip)
+
+  const [open, setOpen]               = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [newTripName, setNewTripName] = useState('')
+  const [creating, setCreating]       = useState(false)
   const dropdownRef = useRef(null)
   const btnRef      = useRef(null)
 
   const initial = currentUser?.email?.charAt(0).toUpperCase() ?? 'U'
 
-  // Fechar ao clicar fora
   useEffect(() => {
     function onClickOutside(e) {
       if (!dropdownRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) {
@@ -25,15 +32,33 @@ export default function UserMenu() {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
-  // Posicionar dropdown no mobile usando fixed
   function handleToggle() {
-    setOpen(prev => !prev)
+    setOpen(prev => {
+      const next = !prev
+      if (next) loadTripsList()
+      return next
+    })
   }
 
   async function handleLogout() {
     setConfirmOpen(false)
     setOpen(false)
     await logout()
+  }
+
+  async function handleSwitchTrip(tripId) {
+    if (tripId === currentTripId) { setOpen(false); return }
+    await switchTrip(tripId)
+    setOpen(false)
+  }
+
+  async function handleCreateTrip() {
+    if (!newTripName.trim() || creating) return
+    setCreating(true)
+    await createNewTrip(newTripName.trim())
+    setCreating(false)
+    setNewTripName('')
+    setOpen(false)
   }
 
   return (
@@ -65,10 +90,37 @@ export default function UserMenu() {
 
             <div className="user-dropdown-divider" />
 
-            <div className="user-dropdown-item" style={{ cursor: 'default' }}>
-              <i className="ti ti-cloud-check" style={{ color: 'var(--accent)' }} />
-              <span>Dados na nuvem</span>
-              <span className="user-dropdown-badge">Ativo</span>
+            <div className="user-dropdown-section-label">
+              <i className="ti ti-luggage" /> Suas viagens
+            </div>
+
+            <div className="user-dropdown-trips">
+              {tripsList.length === 0 && (
+                <div className="trip-list-empty">Carregando…</div>
+              )}
+              {tripsList.map(trip => (
+                <button
+                  key={trip.id}
+                  className={`trip-list-item${trip.id === currentTripId ? ' active' : ''}`}
+                  onClick={() => handleSwitchTrip(trip.id)}
+                >
+                  <i className={`ti ${trip.id === currentTripId ? 'ti-check' : 'ti-map-2'}`} />
+                  <span className="trip-list-item-name">{trip.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="trip-new-row">
+              <input
+                className="trip-new-input"
+                placeholder="Nome da nova viagem"
+                value={newTripName}
+                onChange={e => setNewTripName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateTrip() }}
+              />
+              <button className="btn-icon" onClick={handleCreateTrip} disabled={creating} title="Criar viagem">
+                <i className="ti ti-plus" />
+              </button>
             </div>
 
             <div className="user-dropdown-divider" />
